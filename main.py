@@ -1,31 +1,43 @@
 import requests
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
 import os
+import time
 
-# Get RocketAPI key from environment
+# RocketAPI and Google Sheets setup
 ROCKET_API_TOKEN = os.environ["ROCKET_API_KEY"]
-
-# Your Google Sheet ID
 SPREADSHEET_ID = "13a_IXBNpCDRnSXrFlrxTL7UrmpLYoEQW5ZYQ4ccymQQ"
-
-# Headers used in each worksheet
 HEADERS = ["Usernames", "Location", "Platform", "AccName", "MatchName", "Engaged"]
 
-# Set up Google Sheets client
+# Authorize Google Sheets
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
 client = gspread.authorize(creds)
 sheet_file = client.open_by_key(SPREADSHEET_ID)
 
-# Fetch followers using RocketAPI
+# Get Instagram user ID from RocketAPI
+def get_user_id(username):
+    url = "https://v1.rocketapi.io/instagram/user/get_info"
+    headers = {"Authorization": f"Token {ROCKET_API_TOKEN}"}
+    data = {"username": username}
+    res = requests.post(url, headers=headers, json=data)
+    res.raise_for_status()
+    result = res.json()
+    return result["data"]["id"]
+
+# Get followers from RocketAPI using account ID
 def get_followers(username):
+    try:
+        user_id = get_user_id(username)
+    except Exception as e:
+        print(f"❌ Failed to fetch user ID for {username}: {e}")
+        return []
+
     url = "https://v1.rocketapi.io/instagram/user/get_followers"
     headers = {"Authorization": f"Token {ROCKET_API_TOKEN}"}
-    data = {"username": username, "limit": 1000}
+    data = {"id": user_id, "limit": 1000}
     res = requests.post(url, headers=headers, json=data)
-    
+
     try:
         res.raise_for_status()
         result = res.json()
@@ -38,7 +50,7 @@ def get_followers(username):
         print(f"Response: {res.text}")
         return []
 
-# Create or update follower records in Google Sheets
+# Create or update followers in Google Sheets
 def update_followers(account_username):
     try:
         worksheet = sheet_file.worksheet(account_username)
@@ -46,9 +58,10 @@ def update_followers(account_username):
         worksheet = sheet_file.add_worksheet(title=account_username, rows="1000", cols="10")
         worksheet.append_row(HEADERS)
 
+    time.sleep(2)  # delay to avoid Google Sheets quota limits
+
     all_rows = worksheet.get_all_values()
     existing_usernames = set(row[0] for row in all_rows[1:])
-
     new_followers = get_followers(account_username)
     to_add = [f for f in new_followers if f not in existing_usernames]
 
@@ -57,7 +70,7 @@ def update_followers(account_username):
         worksheet.append_row(row)
         print(f"✅ Added follower '{f}' to sheet '{account_username}'")
 
-# List of Instagram accounts to track
+# List of usernames to process
 accounts = [
     "lilyahh07x", "liilyy2007", "lilydelle19", "lilyserenex", "lilycitirine",
     "emilyaurorasky", "emilynyxshadow", "emilysilvarra", "emilyavayah", "emilyzoeyyy",
@@ -71,6 +84,6 @@ accounts = [
     "lilyfeelsxo07", "lilybluebellz", "lilystellaris"
 ]
 
-# Run update for each account
+# Run for all accounts
 for acc in accounts:
     update_followers(acc)
