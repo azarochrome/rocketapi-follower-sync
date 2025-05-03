@@ -21,16 +21,23 @@ def get_user_id(username):
     headers = {"Authorization": f"Token {ROCKET_API_TOKEN}"}
     data = {"username": username}
     res = requests.post(url, headers=headers, json=data)
-    res.raise_for_status()
-    result = res.json()
-    return result["data"]["id"]
+
+    try:
+        res.raise_for_status()
+        result = res.json()
+        if "data" not in result:
+            print(f"❌ RocketAPI error for {username}: {result}")
+            return None
+        return result["data"]["id"]
+    except Exception as e:
+        print(f"❌ Exception for {username}: {e}")
+        print(f"Response: {res.text}")
+        return None
 
 # Get followers from RocketAPI using account ID
 def get_followers(username):
-    try:
-        user_id = get_user_id(username)
-    except Exception as e:
-        print(f"❌ Failed to fetch user ID for {username}: {e}")
+    user_id = get_user_id(username)
+    if not user_id:
         return []
 
     url = "https://v1.rocketapi.io/instagram/user/get_followers"
