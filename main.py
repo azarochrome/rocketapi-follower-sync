@@ -37,6 +37,8 @@ def get_followers(username):
 
 # Updates a dedicated worksheet for each Instagram account
 def update_followers(account_username):
-    try:
-        worksheet = sheet_file.worksheet(account_username)
-    except gspread.exceptions.WorksheetNotFound:
+try:
+    worksheet = sheet_file.worksheet(account_username)
+except gspread.exceptions.WorksheetNotFound:
+    worksheet = sheet_file.add_worksheet(title=account_username, rows="1000", cols="10")
+    worksheet.append_row(HEADERS)
