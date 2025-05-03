@@ -23,6 +23,10 @@ jobs:
       - name: Add credentials.json
         run: echo "${{ secrets.GOOGLE_CREDS_JSON }}" > credentials.json
 
+        - name: Create credentials.json
+        run: |
+        echo "${{ secrets.GOOGLE_CREDS_JSON }}" | base64 -d > credentials.json
+
       - name: Run script
         env:
           ROCKET_API_KEY: ${{ secrets.ROCKET_API_KEY }}
