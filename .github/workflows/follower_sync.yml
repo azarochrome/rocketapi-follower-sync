@@ -2,7 +2,7 @@ name: Sync Instagram Followers
 
 on:
   schedule:
-    - cron: "0 * * * *"  # Run every hour
+    - cron: "0 * * * *"  # Runs every hour
   workflow_dispatch:      # Allow manual trigger
 
 jobs:
@@ -21,9 +21,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Create credentials.json
-  run: |
-    echo '${{ secrets.GOOGLE_CREDS_JSON }}' > credentials.json
-
+        run: |
+          echo '${{ secrets.GOOGLE_CREDS_JSON }}' > credentials.json
 
       - name: Run script
         env:
