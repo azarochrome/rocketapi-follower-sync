@@ -1,6 +1,5 @@
 import os
 import json
-import traceback
 import requests
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -8,11 +7,8 @@ from googleapiclient.discovery import build
 # --- ENV VARIABLES ---
 AIRTABLE_API_KEY = os.environ.get("AIRTABLE_API_KEY")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-ROCKETAPI_TOKEN = os.environ.get("ROCKETAPI_TOKEN")
+ROCKETAPI_TOKEN = os.environ.get("ROCKET_API_TOKEN")  # ✅ Correct secret name
 ROCKETAPI_URL = "https://v1.rocketapi.io/instagram/user/get_followers"
-
-if not GOOGLE_CREDENTIALS_JSON:
-    raise EnvironmentError("❌ GOOGLE_CREDENTIALS_JSON is not set. Please define it in GitHub Secrets.")
 
 # --- CONFIG ---
 AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
@@ -22,19 +18,14 @@ AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_
 # --- INIT SERVICES ---
 headers = {"Authorization": f"Bearer {AIRTABLE_API_KEY}"}
 
-try:
-    credentials_info = json.loads(GOOGLE_CREDENTIALS_JSON)
-    credentials = service_account.Credentials.from_service_account_info(
-        credentials_info,
-        scopes=["https://www.googleapis.com/auth/spreadsheets"]
-    )
-    sheets_service = build("sheets", "v4", credentials=credentials)
-except Exception:
-    print("❌ Failed to initialize Google Sheets API:")
-    traceback.print_exc()
-    exit(1)
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(GOOGLE_CREDENTIALS_JSON),
+    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+)
+sheets_service = build("sheets", "v4", credentials=credentials)
 
 # --- FUNCTIONS ---
+
 def get_all_accounts():
     print("📦 Fetching ALL Airtable records (no status filter)...")
     response = requests.get(AIRTABLE_URL, headers=headers)
@@ -49,44 +40,31 @@ def extract_sheet_id(sheet_url):
 
 def get_followers(username):
     followers = []
-    end_cursor = ''
+    max_id = ""
     print(f"🔄 Processing @{username} (IG)...")
 
     while True:
         response = requests.post(
             url=ROCKETAPI_URL,
             headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
-            json={"username": username, "next_max_id": end_cursor or None}
+            json={"username": username, "max_id": max_id}
         )
 
         if response.status_code != 200:
-            print(f"❌ API request failed for @{username} with status {response.status_code}: {response.text}")
+            print(f"❌ Failed to fetch from RocketAPI ({response.status_code}): {response.text}")
             break
 
         try:
             data = response.json()
+            print(f"🧪 DEBUG [{username}] RocketAPI raw response:\n***\n  \"data\": ***")
+            users = data["data"]["users"]
+            followers.extend([user["username"] for user in users])
 
-            if "data" not in data or "user" not in data["data"]:
-                print(f"❌ 'data.user' field missing in response for @{username}: {json.dumps(data, indent=2)}")
+            if not data["data"].get("next_max_id"):
                 break
-
-            user_data = data["data"]["user"]
-
-            if "edge_followed_by" not in user_data or "edges" not in user_data["edge_followed_by"]:
-                print(f"❌ 'edge_followed_by.edges' missing for @{username}")
-                break
-
-            edges = user_data["edge_followed_by"]["edges"]
-            page_info = user_data["edge_followed_by"].get("page_info", {})
-
-            followers.extend([edge["node"]["username"] for edge in edges])
-
-            if not page_info.get("has_next_page"):
-                break
-            end_cursor = page_info.get("end_cursor")
-
+            max_id = data["data"]["next_max_id"]
         except Exception as e:
-            print(f"❌ Error parsing response for @{username}: {e}")
+            print(f"❌ Error fetching followers for @{username}: {e}")
             break
 
     print(f"📊 Pulled {len(followers)} followers from @{username}")
@@ -121,13 +99,7 @@ def update_google_sheet(sheet_id, followers, username):
 
 # --- MAIN ---
 def main():
-    try:
-        records = get_all_accounts()
-    except Exception:
-        print("❌ Error fetching Airtable records:")
-        traceback.print_exc()
-        return
-
+    records = get_all_accounts()
     print(f"\n🔍 Found {len(records)} total records in Airtable.\n")
 
     for record in records:
