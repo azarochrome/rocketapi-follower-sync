@@ -124,11 +124,11 @@ def get_followers(username):
 
 def update_google_sheet(sheet_id, followers, username):
     try:
-        # Get sheet metadata
+        # Check if sheet tab exists
         sheets_metadata = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
         sheet_titles = [s["properties"]["title"] for s in sheets_metadata["sheets"]]
 
-        # ✅ If the tab doesn't exist, create it
+        # If the tab doesn't exist, create it
         if username not in sheet_titles:
             print(f"➕ Sheet tab '{username}' not found. Creating it...")
             requests_body = {
@@ -145,9 +145,9 @@ def update_google_sheet(sheet_id, followers, username):
                 body=requests_body
             ).execute()
             print(f"✅ Created new tab '{username}' in sheet {sheet_id}")
-            time.sleep(2)  # 💡 Small wait for Google Sheets to stabilize
+            time.sleep(2)  # <-- Give Google Sheets API time to register new tab
 
-        # ✅ Continue with writing followers to sheet
+        # Now fetch existing data (which will be empty if tab was just created)
         range_name = f"{username}!A:A"
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
