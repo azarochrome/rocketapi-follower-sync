@@ -127,8 +127,21 @@ def update_google_sheet(sheet_id, followers, username):
         sheets_metadata = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
         sheet_titles = [s["properties"]["title"] for s in sheets_metadata["sheets"]]
         if username not in sheet_titles:
-            print(f"❌ Sheet tab '{username}' not found in sheet {sheet_id}")
-            return
+    print(f"➕ Sheet tab '{username}' not found. Creating it...")
+    requests_body = {
+        "requests": [{
+            "addSheet": {
+                "properties": {
+                    "title": username
+                }
+            }
+        }]
+    }
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body=requests_body
+    ).execute()
+    print(f"✅ Created new tab '{username}' in sheet {sheet_id}")
 
         range_name = f"{username}!A:A"
         result = sheets_service.spreadsheets().values().get(
