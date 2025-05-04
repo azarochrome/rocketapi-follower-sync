@@ -62,10 +62,13 @@ def get_followers(username):
 
     try:
         info_data = info_resp.json()
-        user_id = info_data["response"]["body"]["data"]["user"]["pk"]
+        user_data = info_data["response"]["body"]["data"]["user"]
+        user_id = user_data.get("id") or user_data.get("pk")
+        if not user_id:
+            raise KeyError("Missing 'id' or 'pk'")
     except Exception as e:
         print(f"❌ Failed to get ID for @{username}: {e}")
-        print("🔍 Full response:", json.dumps(info_resp.json(), indent=2))
+        print("🔍 Full response:", json.dumps(info_data, indent=2))
         return []
 
     # Step 2: Get followers
@@ -84,7 +87,8 @@ def get_followers(username):
             break
 
         if not data.get("success") or "data" not in data or "users" not in data["data"]:
-            print(f"❌ RocketAPI error for @{username}:\n{json.dumps(data, indent=2)}")
+            print(f"❌ RocketAPI error for @{username}:")
+            print(json.dumps(data, indent=2))
             break
 
         try:
