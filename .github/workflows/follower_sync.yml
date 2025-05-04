@@ -22,7 +22,7 @@ jobs:
 
       - name: Create credentials.json
         run: |
-          echo '${{ secrets.GOOGLE_CREDS_JSON }}' > credentials.json
+          echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > credentials.json
 
       - name: Run script
         env:
