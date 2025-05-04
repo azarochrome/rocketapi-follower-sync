@@ -1,28 +1,24 @@
-name: Run Follower Sync
+name: Follower Sync
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'  # every hour
 
 jobs:
-  run:
+  sync:
     runs-on: ubuntu-latest
-
-env:
-  AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
-  ROCKET_API_TOKEN: ${{ secrets.ROCKET_API_TOKEN }}
-  GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-
+    env:
+      AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
+      GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+      ROCKET_API_TOKEN: ${{ secrets.ROCKET_API_TOKEN }}
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
+      - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-
+          python-version: 3.11
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Run script
         run: python main.py
