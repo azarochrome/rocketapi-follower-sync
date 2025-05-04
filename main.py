@@ -83,7 +83,14 @@ def get_followers(username):
 
             if not page_info.get("has_next_page"):
                 break
-            end_cursor = page_info.get
+            end_cursor = page_info.get("end_cursor")
+
+        except Exception as e:
+            print(f"❌ Error parsing response for @{username}: {e}")
+            break
+
+    print(f"📊 Pulled {len(followers)} followers from @{username}")
+    return followers
 
 def update_google_sheet(sheet_id, followers, username):
     try:
