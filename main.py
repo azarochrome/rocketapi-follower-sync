@@ -16,9 +16,18 @@ AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
 AIRTABLE_TABLE_NAME = "Accounts"
 AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
 
-# --- INIT SERVICES ---
-headers = {"Authorization": f"Bearer {AIRTABLE_API_KEY}"}
+# --- HEADERS ---
+airtable_headers = {
+    "Authorization": f"Bearer {AIRTABLE_API_KEY}",
+    "Content-Type": "application/json"
+}
 
+rocketapi_headers = {
+    "Authorization": f"Token {ROCKETAPI_TOKEN}",
+    "Content-Type": "application/json"
+}
+
+# --- INIT GOOGLE SHEETS SERVICE ---
 credentials = service_account.Credentials.from_service_account_info(
     json.loads(GOOGLE_CREDENTIALS_JSON),
     scopes=["https://www.googleapis.com/auth/spreadsheets"]
@@ -26,10 +35,9 @@ credentials = service_account.Credentials.from_service_account_info(
 sheets_service = build("sheets", "v4", credentials=credentials)
 
 # --- FUNCTIONS ---
-
 def get_all_accounts():
     print("📦 Fetching ALL Airtable records (no status filter)...")
-    response = requests.get(AIRTABLE_URL, headers=headers)
+    response = requests.get(AIRTABLE_URL, headers=airtable_headers)
     response.raise_for_status()
     return response.json().get("records", [])
 
@@ -48,7 +56,7 @@ def get_followers(username):
     # Step 1: Get IG ID
     info_resp = requests.post(
         url=ROCKETAPI_INFO_URL,
-        headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
+        headers=rocketapi_headers,
         json={"username": username}
     )
 
@@ -64,7 +72,7 @@ def get_followers(username):
     while True:
         follower_resp = requests.post(
             url=ROCKETAPI_FOLLOWERS_URL,
-            headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
+            headers=rocketapi_headers,
             json={
                 "id": user_id,
                 "max_id": max_id or None
