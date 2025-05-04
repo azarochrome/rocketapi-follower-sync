@@ -73,10 +73,7 @@ def get_followers(username):
         follower_resp = requests.post(
             url=ROCKETAPI_FOLLOWERS_URL,
             headers=rocketapi_headers,
-            json={
-                "id": user_id,
-                "max_id": max_id or None
-            }
+            json={"id": user_id, "max_id": max_id or None}
         )
 
         try:
@@ -86,14 +83,13 @@ def get_followers(username):
             print("🔍 Raw response:", follower_resp.text)
             break
 
-        if not data.get("success"):
+        if not data.get("success") or "data" not in data or "users" not in data["data"]:
             print(f"❌ RocketAPI error for @{username}:\n{json.dumps(data, indent=2)}")
             break
 
         try:
             users = data["data"]["users"]
             followers.extend([u["username"] for u in users])
-
             if not data["data"].get("next_max_id"):
                 break
             max_id = data["data"]["next_max_id"]
