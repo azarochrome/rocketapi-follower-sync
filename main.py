@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import time
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -10,6 +11,11 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 ROCKETAPI_TOKEN = os.environ.get("ROCKETAPI_TOKEN")
 ROCKETAPI_FOLLOWERS_URL = "https://v1.rocketapi.io/instagram/user/get_followers"
 ROCKETAPI_INFO_URL = "https://v1.rocketapi.io/instagram/user/get_info"
+
+# --- CHECK ENV CREDS ---
+if not AIRTABLE_API_KEY or not ROCKETAPI_TOKEN or not GOOGLE_CREDENTIALS_JSON:
+    print("❌ Missing one or more API credentials in environment variables.")
+    exit(1)
 
 # --- CONFIG ---
 AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
@@ -47,17 +53,26 @@ def extract_sheet_id(sheet_url):
     except (IndexError, AttributeError):
         return None
 
+def safe_post_request(url, headers, payload, retries=3):
+    for i in range(retries):
+        resp = requests.post(url, headers=headers, json=payload)
+        if resp.status_code == 200:
+            return resp
+        time.sleep(2 ** i)  # exponential backoff
+    return None
+
 def get_followers(username):
     followers = []
     max_id = ""
+    seen_ids = set()
 
     print(f"🔄 Processing @{username} (IG)...")
 
     # Step 1: Get IG ID
-    info_resp = requests.post(
+    info_resp = safe_post_request(
         url=ROCKETAPI_INFO_URL,
         headers=rocketapi_headers,
-        json={"username": username}
+        payload={"username": username}
     )
 
     try:
@@ -73,10 +88,10 @@ def get_followers(username):
 
     # Step 2: Get followers
     while True:
-        follower_resp = requests.post(
+        follower_resp = safe_post_request(
             url=ROCKETAPI_FOLLOWERS_URL,
             headers=rocketapi_headers,
-            json={"id": user_id, "max_id": max_id or None}
+            payload={"id": user_id, "max_id": max_id or None}
         )
 
         try:
@@ -94,9 +109,11 @@ def get_followers(username):
         try:
             users = data["data"]["users"]
             followers.extend([u["username"] for u in users])
-            if not data["data"].get("next_max_id"):
+            next_id = data["data"].get("next_max_id")
+            if not next_id or next_id in seen_ids:
                 break
-            max_id = data["data"]["next_max_id"]
+            seen_ids.add(next_id)
+            max_id = next_id
         except Exception as e:
             print(f"❌ Error extracting followers for @{username}: {e}")
             break
@@ -106,6 +123,13 @@ def get_followers(username):
 
 def update_google_sheet(sheet_id, followers, username):
     try:
+        # Check if sheet tab exists
+        sheets_metadata = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+        sheet_titles = [s["properties"]["title"] for s in sheets_metadata["sheets"]]
+        if username not in sheet_titles:
+            print(f"❌ Sheet tab '{username}' not found in sheet {sheet_id}")
+            return
+
         range_name = f"{username}!A:A"
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
@@ -135,6 +159,7 @@ def update_google_sheet(sheet_id, followers, username):
 def main():
     records = get_all_accounts()
     print(f"\n🔍 Found {len(records)} total records in Airtable.\n")
+    success_count = 0
 
     for record in records:
         fields = record.get("fields", {})
@@ -159,8 +184,9 @@ def main():
             continue
 
         update_google_sheet(sheet_id, followers, username)
+        success_count += 1
 
-    print("\n✅ Follower sync completed.")
+    print(f"\n✅ Follower sync completed. {success_count}/{len(records)} updated.\n")
 
 if __name__ == "__main__":
     main()
