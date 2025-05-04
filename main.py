@@ -103,19 +103,19 @@ def get_followers(username):
             print("🔍 Raw response:", follower_resp.text)
             break
 
-        if not data.get("success") or "data" not in data or "users" not in data["data"]:
-            print(f"❌ RocketAPI error for @{username}:\n", json.dumps(data, indent=2))
-            break
-
         try:
-            users = data["data"]["users"]
+            users = data["response"]["body"]["users"]
+            print("👥 First 5 followers:", [u["username"] for u in users[:5]])  # 👈 Here’s your line
             followers.extend([u["username"] for u in users])
-            next_id = data["data"].get("next_max_id")
+
+            next_id = data["response"]["body"].get("next_max_id")
             if not next_id or next_id in seen_ids:
                 break
             seen_ids.add(next_id)
             max_id = next_id
+
         except Exception as e:
+            print(f"❌ RocketAPI error for @{username}:\n", json.dumps(data, indent=2))
             print(f"❌ Error extracting followers for @{username}: {e}")
             break
 
