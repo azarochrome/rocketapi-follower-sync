@@ -58,7 +58,7 @@ def safe_post_request(url, headers, payload, retries=3):
         resp = requests.post(url, headers=headers, json=payload)
         if resp.status_code == 200:
             return resp
-        time.sleep(2 ** i)  # exponential backoff
+        time.sleep(2 ** i)
     return None
 
 def get_followers(username):
@@ -67,9 +67,8 @@ def get_followers(username):
     seen_ids = set()
 
     print(f"🔄 Processing @{username} (IG)...")
+    info_data = {}
 
-    # Step 1: Get IG ID
-    info_data = {}  # ✅ Fix: define info_data early to avoid UnboundLocalError
     info_resp = safe_post_request(
         url=ROCKETAPI_INFO_URL,
         headers=rocketapi_headers,
@@ -87,7 +86,6 @@ def get_followers(username):
         print("🔍 Full response:", json.dumps(info_data, indent=2))
         return []
 
-    # Step 2: Get followers
     while True:
         follower_resp = safe_post_request(
             url=ROCKETAPI_FOLLOWERS_URL,
@@ -124,7 +122,6 @@ def get_followers(username):
 
 def update_google_sheet(sheet_id, followers, username):
     try:
-        # Check if sheet tab exists
         sheets_metadata = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
         sheet_titles = [s["properties"]["title"] for s in sheets_metadata["sheets"]]
 
@@ -133,9 +130,7 @@ def update_google_sheet(sheet_id, followers, username):
             requests_body = {
                 "requests": [{
                     "addSheet": {
-                        "properties": {
-                            "title": username
-                        }
+                        "properties": {"title": username}
                     }
                 }]
             }
@@ -145,7 +140,6 @@ def update_google_sheet(sheet_id, followers, username):
             ).execute()
             print(f"✅ Created new tab '{username}' in sheet {sheet_id}")
 
-        # Continue with update logic
         range_name = f"{username}!A:A"
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
