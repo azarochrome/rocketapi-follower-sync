@@ -1,96 +1,131 @@
-import requests
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import os
-import time
+import json
+import requests
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
-# RocketAPI and Google Sheets setup
-ROCKET_API_TOKEN = os.environ["ROCKET_API_KEY"]
-SPREADSHEET_ID = "13a_IXBNpCDRnSXrFlrxTL7UrmpLYoEQW5ZYQ4ccymQQ"
-HEADERS = ["Usernames", "Location", "Platform", "AccName", "MatchName", "Engaged"]
+# --- ENV VARIABLES ---
+AIRTABLE_API_KEY = os.environ.get("AIRTABLE_API_KEY")
+GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+ROCKETAPI_TOKEN = os.environ.get("ROCKETAPI_TOKEN")
+ROCKETAPI_URL = "https://v1.rocketapi.io/instagram/user/get_info"
 
-# Authorize Google Sheets
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-client = gspread.authorize(creds)
-sheet_file = client.open_by_key(SPREADSHEET_ID)
+# --- CONFIG ---
+AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
+AIRTABLE_TABLE_NAME = "Accounts"
+AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
 
-# Get Instagram user ID from RocketAPI
-def get_user_id(username):
-    url = "https://v1.rocketapi.io/instagram/user/get_info"
-    headers = {"Authorization": f"Token {ROCKET_API_TOKEN}"}
-    data = {"username": username}
-    res = requests.post(url, headers=headers, json=data)
+# --- INIT SERVICES ---
+headers = {"Authorization": f"Bearer {AIRTABLE_API_KEY}"}
 
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(GOOGLE_CREDENTIALS_JSON),
+    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+)
+sheets_service = build("sheets", "v4", credentials=credentials)
+
+# --- FUNCTIONS ---
+
+def get_all_accounts():
+    print("📦 Fetching ALL Airtable records (no status filter)...")
+    response = requests.get(AIRTABLE_URL, headers=headers)
+    response.raise_for_status()
+    return response.json().get("records", [])
+
+def extract_sheet_id(sheet_url):
     try:
-        res.raise_for_status()
-        result = res.json()
-        if "data" not in result:
-            print(f"❌ RocketAPI error for {username}: {result}")
-            return None
-        return result["data"]["id"]
-    except Exception as e:
-        print(f"❌ Exception for {username}: {e}")
-        print(f"Response: {res.text}")
+        return sheet_url.split("/d/")[1].split("/")[0]
+    except (IndexError, AttributeError):
         return None
 
-# Get followers from RocketAPI using account ID
 def get_followers(username):
-    user_id = get_user_id(username)
-    if not user_id:
-        return []
+    followers = []
+    end_cursor = ''
+    print(f"🔄 Processing @{username} (IG)...")
 
-    url = "https://v1.rocketapi.io/instagram/user/get_followers"
-    headers = {"Authorization": f"Token {ROCKET_API_TOKEN}"}
-    data = {"id": user_id, "limit": 1000}
-    res = requests.post(url, headers=headers, json=data)
+    while True:
+        response = requests.post(
+            url=ROCKETAPI_URL,
+            headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
+            json={"username": username, "next_max_id": end_cursor or None}
+        )
 
+        try:
+            data = response.json()
+            print(f"🧪 DEBUG [{username}] RocketAPI raw response:\n***\n  \"data\": ***")
+            user_data = data["data"]["user"]
+            edges = user_data["edge_followed_by"]["edges"]
+            page_info = user_data["edge_followed_by"]["page_info"]
+        except Exception as e:
+            print(f"❌ Error fetching followers for @{username}: {e}")
+            break
+
+        followers.extend([edge["node"]["username"] for edge in edges])
+
+        if not page_info.get("has_next_page"):
+            break
+        end_cursor = page_info.get("end_cursor")
+
+    print(f"📊 Pulled {len(followers)} followers from @{username}")
+    return followers
+
+def update_google_sheet(sheet_id, followers, username):
     try:
-        res.raise_for_status()
-        result = res.json()
-        if "data" not in result:
-            print(f"❌ No 'data' returned for {username}: {result}")
-            return []
-        return [f['username'] for f in result["data"]]
+        range_name = f"{username}!A:A"
+        result = sheets_service.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=range_name
+        ).execute()
+
+        existing = result.get("values", [])
+        existing_usernames = {row[0] for row in existing if row}
+
+        new_followers = [[f] for f in followers if f not in existing_usernames]
+
+        if new_followers:
+            sheets_service.spreadsheets().values().append(
+                spreadsheetId=sheet_id,
+                range=f"{username}!A1",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": new_followers}
+            ).execute()
+            print(f"✅ Synced {len(new_followers)} new followers from @{username} → Sheet tab: {username}")
+        else:
+            print(f"✅ No new followers to sync from @{username} → Sheet tab: {username}")
     except Exception as e:
-        print(f"❌ Error fetching followers for {username}: {e}")
-        print(f"Response: {res.text}")
-        return []
+        print(f"❌ Failed to update Google Sheet tab {username} in {sheet_id}: {e}")
 
-# Create or update followers in Google Sheets
-def update_followers(account_username):
-    try:
-        worksheet = sheet_file.worksheet(account_username)
-    except gspread.exceptions.WorksheetNotFound:
-        worksheet = sheet_file.add_worksheet(title=account_username, rows="1000", cols="10")
-        worksheet.append_row(HEADERS)
+# --- MAIN ---
+def main():
+    records = get_all_accounts()
+    print(f"\n🔍 Found {len(records)} total records in Airtable.\n")
 
-    time.sleep(2)  # delay to avoid Google Sheets quota limits
+    for record in records:
+        fields = record.get("fields", {})
+        username = fields.get("Username")
+        sheet_url = fields.get("Google Sheets")
 
-    all_rows = worksheet.get_all_values()
-    existing_usernames = set(row[0] for row in all_rows[1:])
-    new_followers = get_followers(account_username)
-    to_add = [f for f in new_followers if f not in existing_usernames]
+        if not username:
+            print("⚠️ Skipping: no Username provided.")
+            continue
+        if not sheet_url:
+            print(f"⚠️ Skipping @{username}: no Google Sheets URL.")
+            continue
 
-    for f in to_add:
-        row = [f, "", "", "", "", ""]
-        worksheet.append_row(row)
-        print(f"✅ Added follower '{f}' to sheet '{account_username}'")
+        sheet_id = extract_sheet_id(sheet_url)
+        if not sheet_id:
+            print(f"⚠️ Skipping @{username}: invalid sheet URL.")
+            continue
 
-# List of usernames to process
-accounts = [
-    "lilyahh07x", "liilyy2007", "lilydelle19", "lilyserenex", "lilycitirine",
-    "emilyaurorasky", "emilynyxshadow", "emilysilvarra", "emilyavayah", "emilyzoeyyy",
-    "emilylarkss", "emilysserenax", "emilyarwen32", "emilyvortesxx", "emilybeauuu",
-    "lilyvellichor", "lilyhalcyonex", "lilyzarielle", "lilyduskie", "lilytitanias",
-    "lilygarnette32", "lilyluminaa", "lilylollii07", "lilywispie", "lilytulipzz",
-    "emilylucianax", "emilyvixendream", "emilyshariex", "lilyrosenaaxx", "lilyanniii2",
-    "emilybellee7", "emilyroseveil", "lilyfaylin16", "emilyshaelynn", "lilypicnic07",
-    "lilyinlace07", "lilytalesxo07", "lilybunnee07", "lilyfayeth", "lilyiriswave",
-    "lilyaurelline", "lilynirvaa", "lilydelphia21", "lilytempestt", "lilydaydreem",
-    "lilyfeelsxo07", "lilybluebellz", "lilystellaris"
-]
+        followers = get_followers(username)
+        if not followers:
+            print(f"⚠️ Skipping @{username}: no followers returned.")
+            continue
 
-# Run for all accounts
-for acc in accounts:
-    update_followers(acc)
+        update_google_sheet(sheet_id, followers, username)
+
+    print("\n✅ Follower sync completed.")
+
+if __name__ == "__main__":
+    main()
