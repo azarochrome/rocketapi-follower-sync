@@ -59,24 +59,31 @@ def get_followers(username):
             json={"username": username, "next_max_id": end_cursor or None}
         )
 
+        if response.status_code != 200:
+            print(f"❌ API request failed for @{username} with status {response.status_code}: {response.text}")
+            break
+
         try:
             data = response.json()
-            print(f"🧪 DEBUG [{username}] RocketAPI raw response:\n***\n  \"data\": ***")
+
+            if "data" not in data or "user" not in data["data"]:
+                print(f"❌ 'data.user' field missing in response for @{username}: {json.dumps(data, indent=2)}")
+                break
+
             user_data = data["data"]["user"]
+
+            if "edge_followed_by" not in user_data or "edges" not in user_data["edge_followed_by"]:
+                print(f"❌ 'edge_followed_by.edges' missing for @{username}")
+                break
+
             edges = user_data["edge_followed_by"]["edges"]
-            page_info = user_data["edge_followed_by"]["page_info"]
-        except Exception as e:
-            print(f"❌ Error fetching followers for @{username}: {e}")
-            break
+            page_info = user_data["edge_followed_by"].get("page_info", {})
 
-        followers.extend([edge["node"]["username"] for edge in edges])
+            followers.extend([edge["node"]["username"] for edge in edges])
 
-        if not page_info.get("has_next_page"):
-            break
-        end_cursor = page_info.get("end_cursor")
-
-    print(f"📊 Pulled {len(followers)} followers from @{username}")
-    return followers
+            if not page_info.get("has_next_page"):
+                break
+            end_cursor = page_info.get
 
 def update_google_sheet(sheet_id, followers, username):
     try:
