@@ -47,16 +47,22 @@ def get_followers(username):
         response = requests.post(
             url=ROCKETAPI_URL,
             headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
-            json={"username": username, "max_id": max_id}
+            json={"username": username, "max_id": max_id or None}
         )
-
-        if response.status_code != 200:
-            print(f"❌ Failed to fetch from RocketAPI ({response.status_code}): {response.text}")
-            break
 
         try:
             data = response.json()
-            print(f"🧪 DEBUG [{username}] RocketAPI raw response:\n***\n  \"data\": ***")
+        except Exception as e:
+            print(f"❌ Failed to parse JSON: {e}")
+            print("🔍 Raw response:\n", response.text)
+            break
+
+        if not data.get("success"):
+            print(f"❌ RocketAPI error for @{username}:")
+            print(json.dumps(data, indent=2))
+            break
+
+        try:
             users = data["data"]["users"]
             followers.extend([user["username"] for user in users])
 
@@ -64,7 +70,8 @@ def get_followers(username):
                 break
             max_id = data["data"]["next_max_id"]
         except Exception as e:
-            print(f"❌ Error fetching followers for @{username}: {e}")
+            print(f"❌ Error extracting followers for @{username}: {e}")
+            print("⚠️ Full response:\n", json.dumps(data, indent=2))
             break
 
     print(f"📊 Pulled {len(followers)} followers from @{username}")
