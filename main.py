@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 AIRTABLE_API_KEY = os.environ.get("AIRTABLE_API_KEY")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 ROCKETAPI_TOKEN = os.environ.get("ROCKETAPI_TOKEN")
-ROCKETAPI_URL = "https://v1.rocketapi.io/instagram/user/get_info"
+ROCKETAPI_URL = "https://v1.rocketapi.io/instagram/user/get_followers"
 
 # --- CONFIG ---
 AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
