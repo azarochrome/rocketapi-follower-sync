@@ -7,8 +7,9 @@ from googleapiclient.discovery import build
 # --- ENV VARIABLES ---
 AIRTABLE_API_KEY = os.environ.get("AIRTABLE_API_KEY")
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-ROCKETAPI_TOKEN = os.environ.get("ROCKET_API_TOKEN")  # ✅ Correct secret name
-ROCKETAPI_URL = "https://v1.rocketapi.io/instagram/user/get_followers"
+ROCKETAPI_TOKEN = os.environ.get("ROCKET_API_TOKEN")
+ROCKETAPI_FOLLOWERS_URL = "https://v1.rocketapi.io/instagram/user/get_followers"
+ROCKETAPI_INFO_URL = "https://v1.rocketapi.io/instagram/user/get_info"
 
 # --- CONFIG ---
 AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
@@ -41,37 +42,55 @@ def extract_sheet_id(sheet_url):
 def get_followers(username):
     followers = []
     max_id = ""
+
     print(f"🔄 Processing @{username} (IG)...")
 
+    # Step 1: Get IG ID
+    info_resp = requests.post(
+        url=ROCKETAPI_INFO_URL,
+        headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
+        json={"username": username}
+    )
+
+    try:
+        info_data = info_resp.json()
+        user_id = info_data["data"]["id"]
+    except Exception as e:
+        print(f"❌ Failed to get ID for @{username}: {e}")
+        print("🔍 Full response:", info_resp.text)
+        return []
+
+    # Step 2: Get followers
     while True:
-        response = requests.post(
-            url=ROCKETAPI_URL,
+        follower_resp = requests.post(
+            url=ROCKETAPI_FOLLOWERS_URL,
             headers={"Authorization": f"Token {ROCKETAPI_TOKEN}"},
-            json={"username": username, "max_id": max_id or None}
+            json={
+                "id": user_id,
+                "max_id": max_id or None
+            }
         )
 
         try:
-            data = response.json()
+            data = follower_resp.json()
         except Exception as e:
             print(f"❌ Failed to parse JSON: {e}")
-            print("🔍 Raw response:\n", response.text)
+            print("🔍 Raw response:", follower_resp.text)
             break
 
         if not data.get("success"):
-            print(f"❌ RocketAPI error for @{username}:")
-            print(json.dumps(data, indent=2))
+            print(f"❌ RocketAPI error for @{username}:\n{json.dumps(data, indent=2)}")
             break
 
         try:
             users = data["data"]["users"]
-            followers.extend([user["username"] for user in users])
+            followers.extend([u["username"] for u in users])
 
             if not data["data"].get("next_max_id"):
                 break
             max_id = data["data"]["next_max_id"]
         except Exception as e:
             print(f"❌ Error extracting followers for @{username}: {e}")
-            print("⚠️ Full response:\n", json.dumps(data, indent=2))
             break
 
     print(f"📊 Pulled {len(followers)} followers from @{username}")
