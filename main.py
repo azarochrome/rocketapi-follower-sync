@@ -69,6 +69,7 @@ def get_followers(username):
     print(f"🔄 Processing @{username} (IG)...")
 
     # Step 1: Get IG ID
+    info_data = {}  # ✅ Fix: define info_data early to avoid UnboundLocalError
     info_resp = safe_post_request(
         url=ROCKETAPI_INFO_URL,
         headers=rocketapi_headers,
