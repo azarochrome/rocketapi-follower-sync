@@ -1,16 +1,18 @@
-name: Sync Instagram Followers
+name: Run Follower Sync
 
 on:
-  schedule:
-    - cron: "0 * * * *"  # Runs every hour
-  workflow_dispatch:      # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
+    env:
+      GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -20,11 +22,5 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Create credentials.json
-        run: |
-          echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > credentials.json
-
       - name: Run script
-        env:
-          ROCKET_API_KEY: ${{ secrets.ROCKET_API_KEY }}
         run: python main.py
