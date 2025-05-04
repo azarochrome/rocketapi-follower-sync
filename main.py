@@ -1,5 +1,6 @@
 import os
 import json
+import traceback
 import requests
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -10,6 +11,9 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 ROCKETAPI_TOKEN = os.environ.get("ROCKETAPI_TOKEN")
 ROCKETAPI_URL = "https://v1.rocketapi.io/instagram/user/get_followers"
 
+if not GOOGLE_CREDENTIALS_JSON:
+    raise EnvironmentError("❌ GOOGLE_CREDENTIALS_JSON is not set. Please define it in GitHub Secrets.")
+
 # --- CONFIG ---
 AIRTABLE_BASE_ID = "appTxTTXPTBFwjelH"
 AIRTABLE_TABLE_NAME = "Accounts"
@@ -18,14 +22,19 @@ AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_
 # --- INIT SERVICES ---
 headers = {"Authorization": f"Bearer {AIRTABLE_API_KEY}"}
 
-credentials = service_account.Credentials.from_service_account_info(
-    json.loads(GOOGLE_CREDENTIALS_JSON),
-    scopes=["https://www.googleapis.com/auth/spreadsheets"]
-)
-sheets_service = build("sheets", "v4", credentials=credentials)
+try:
+    credentials_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+    credentials = service_account.Credentials.from_service_account_info(
+        credentials_info,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    sheets_service = build("sheets", "v4", credentials=credentials)
+except Exception:
+    print("❌ Failed to initialize Google Sheets API:")
+    traceback.print_exc()
+    exit(1)
 
 # --- FUNCTIONS ---
-
 def get_all_accounts():
     print("📦 Fetching ALL Airtable records (no status filter)...")
     response = requests.get(AIRTABLE_URL, headers=headers)
@@ -98,7 +107,13 @@ def update_google_sheet(sheet_id, followers, username):
 
 # --- MAIN ---
 def main():
-    records = get_all_accounts()
+    try:
+        records = get_all_accounts()
+    except Exception:
+        print("❌ Error fetching Airtable records:")
+        traceback.print_exc()
+        return
+
     print(f"\n🔍 Found {len(records)} total records in Airtable.\n")
 
     for record in records:
