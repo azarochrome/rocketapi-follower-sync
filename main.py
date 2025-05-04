@@ -127,22 +127,23 @@ def update_google_sheet(sheet_id, followers, username):
         # Check if sheet tab exists
         sheets_metadata = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
         sheet_titles = [s["properties"]["title"] for s in sheets_metadata["sheets"]]
+
         if username not in sheet_titles:
-    print(f"➕ Sheet tab '{username}' not found. Creating it...")
-    requests_body = {
-        "requests": [{
-            "addSheet": {
-                "properties": {
-                    "title": username
-                }
+            print(f"➕ Sheet tab '{username}' not found. Creating it...")
+            requests_body = {
+                "requests": [{
+                    "addSheet": {
+                        "properties": {
+                            "title": username
+                        }
+                    }
+                }]
             }
-        }]
-    }
-    sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=sheet_id,
-        body=requests_body
-    ).execute()
-    print(f"✅ Created new tab '{username}' in sheet {sheet_id}")
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body=requests_body
+            ).execute()
+            print(f"✅ Created new tab '{username}' in sheet {sheet_id}")
 
         range_name = f"{username}!A:A"
         result = sheets_service.spreadsheets().values().get(
@@ -168,7 +169,6 @@ def update_google_sheet(sheet_id, followers, username):
             print(f"✅ No new followers to sync from @{username} → Sheet tab: {username}")
     except Exception as e:
         print(f"❌ Failed to update Google Sheet tab {username} in {sheet_id}: {e}")
-
 # --- MAIN ---
 def main():
     records = get_all_accounts()
