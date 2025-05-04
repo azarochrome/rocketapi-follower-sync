@@ -44,6 +44,8 @@ sheets_service = build("sheets", "v4", credentials=credentials)
 def get_all_accounts():
     print("📦 Fetching ALL Airtable records (no status filter)...")
     response = requests.get(AIRTABLE_URL, headers=airtable_headers)
+    print("📡 Airtable response status:", response.status_code)
+    print("📄 Airtable raw response:", response.text[:300])  # limit long logs
     response.raise_for_status()
     return response.json().get("records", [])
 
@@ -58,6 +60,7 @@ def safe_post_request(url, headers, payload, retries=3):
         resp = requests.post(url, headers=headers, json=payload)
         if resp.status_code == 200:
             return resp
+        print(f"⚠️ Retry {i + 1} failed with status {resp.status_code}")
         time.sleep(2 ** i)
     return None
 
@@ -67,8 +70,8 @@ def get_followers(username):
     seen_ids = set()
 
     print(f"🔄 Processing @{username} (IG)...")
-    info_data = {}
 
+    info_data = {}
     info_resp = safe_post_request(
         url=ROCKETAPI_INFO_URL,
         headers=rocketapi_headers,
@@ -80,7 +83,7 @@ def get_followers(username):
         user_data = info_data["response"]["body"]["data"]["user"]
         user_id = user_data.get("id") or user_data.get("pk")
         if not user_id:
-            raise KeyError("Missing 'id' or 'pk'")
+            raise KeyError("Missing IG ID")
     except Exception as e:
         print(f"❌ Failed to get ID for @{username}: {e}")
         print("🔍 Full response:", json.dumps(info_data, indent=2))
@@ -101,8 +104,7 @@ def get_followers(username):
             break
 
         if not data.get("success") or "data" not in data or "users" not in data["data"]:
-            print(f"❌ RocketAPI error for @{username}:")
-            print(json.dumps(data, indent=2))
+            print(f"❌ RocketAPI error for @{username}:\n", json.dumps(data, indent=2))
             break
 
         try:
@@ -124,13 +126,14 @@ def update_google_sheet(sheet_id, followers, username):
     try:
         sheets_metadata = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
         sheet_titles = [s["properties"]["title"] for s in sheets_metadata["sheets"]]
-
         if username not in sheet_titles:
             print(f"➕ Sheet tab '{username}' not found. Creating it...")
             requests_body = {
                 "requests": [{
                     "addSheet": {
-                        "properties": {"title": username}
+                        "properties": {
+                            "title": username
+                        }
                     }
                 }]
             }
@@ -167,6 +170,7 @@ def update_google_sheet(sheet_id, followers, username):
 
 # --- MAIN ---
 def main():
+    print("🚀 Starting follower sync job...")
     records = get_all_accounts()
     print(f"\n🔍 Found {len(records)} total records in Airtable.\n")
     success_count = 0
